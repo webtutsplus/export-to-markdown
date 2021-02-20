@@ -11,7 +11,6 @@ window.onload = function() {
   }
   createLoadForm()
   loadIcon.style.visibility = 'visible'
-  console.log("nilmadhab loading");
   exportMedium()
 }
 
@@ -62,12 +61,10 @@ function exportMedium() {
         }
       })
       .then( (res) => {
-        console.log("nilmadhab res", res);
         let markdownText = ''
         let title = '';
         // medium Process
         const story = parseJsonToMarkdown(res)
-        console.log("markdown story", story);
         return story;
       }).then((story)=>{
         // process gist
