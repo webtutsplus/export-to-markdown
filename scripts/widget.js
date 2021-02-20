@@ -60,29 +60,41 @@ function exportMedium() {
           console.error('The fetch fails, and the response code is ' + res.status)
         }
       })
-      .then(function (res) {
+      .then( (res) => {
         let markdownText = ''
-        let title = ''
-        if (isHtml) {
-          const parser = new DOMParser()
-          const doc = parser.parseFromString(res, 'text/html')
-          var blog = doc.querySelector('.article-post-wrapper') || doc.querySelector('#content')
-          titleDoc = doc.querySelector('.full-bleed-data h2') || doc.querySelector('.container .text-center h1')
-          const title = titleDoc.innerText
-          const turndownService = new TurndownService()
-          if (title != null) {
-            markdownText = '# ' + title + '\n' + turndownService.turndown(blog)
-          } else {
-            markdownText = turndownService.turndown(blog)
+        let title = '';
+        // medium Process
+        return parseJsonToMarkdown(res);
+      }).then((story)=>{
+        // process gist
+      let promArr = [];
+        for (let i = 0 ; i < story.markdown.length; i++) {
+          let mark = story.markdown[i];
+          if (mark.search("gist:") == 0){
+            let gist_url = mark.split("gist:")[1];
+            promArr.push(getLiquidTagsForDevto(gist_url, i, 'gist'));
+            console.log("gist url", gist_url);
           }
-        } else {
-          const story = parseJsonToMarkdown(res)
+          if (mark.search("youtube:") == 0){
+            let gist_url = mark.split("youtube:")[1];
+            promArr.push(getLiquidTagsForDevto(gist_url, i, 'youtube'));
+            console.log("gist url", gist_url);
+          }
+        }
+        Promise.all(promArr).then((results)=>{
+          console.log("results promarr", results);
+          for (let i = 0; i< results.length; i++) {
+            let index = results[i][0];
+            let gist = results[i][1];
+            story.markdown[index] = gist;
+          }
           markdownText = story.markdown.join('')
           title = story.title
-        }      
-        saveHistory(title, activeTab.url)
-        cancelLoad()
-        document.querySelector('#source').value = markdownText;
+          saveHistory(title, activeTab.url)
+          cancelLoad()
+          document.querySelector('#source').value = markdownText;
+        })
+
       })
       .catch(function (err) {
         console.error(err)
@@ -174,6 +186,44 @@ function processSection(s) {
   return section
 }
 
+function getLiquidTagsForDevto(url, index, type) {
+  return new Promise((resolve, reject) => {
+    fetch(url)
+      .then(function (res) {
+        //console.log("gist",res.text());
+        if (res.ok) {
+          return res.text()
+        } else {
+          console.error('The fetch fails, and the response code is ' + res.status)
+        }
+      }).then((text)=>{
+      //console.log("text", text);
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(text, 'text/html')
+      let liquid_tag = '';
+      if (type == 'gist') {
+        let gist = doc.querySelector('script');
+        if (gist) {
+          liquid_tag = `{% ${type} ${gist.src} %}`;
+        }
+      }
+      if (type == 'youtube') {
+        let iframesrc = doc.querySelector('iframe');
+        if (iframesrc) {
+          let decodedURL = decodeURIComponent(iframesrc.src);
+          decodedURL = decodedURL.split("?feature")[0];
+          decodedURL = decodedURL.split("https://cdn.embedly.com/widgets/media.html?src=https://www.youtube.com/embed/")[1];
+          liquid_tag = `{% ${type} ${decodedURL} %}`;;
+        }
+      }
+      return resolve([index, liquid_tag]);
+    }).catch((err)=>{
+      return resolve([index, liquid_tag]);
+    });
+  });
+
+}
+
 function processParagraph(p, sequence) {
   const markups_array = createMarkupsArray(p.markups)
   if (markups_array.length > 0) {
@@ -225,7 +275,45 @@ function processParagraph(p, sequence) {
       markup = '\n ' + sequence + '. '
       break
     case 11:
+      // code and youtube videos
+      /*
+      code
+      {
+      "name": "1314",
+      "type": 11,
+      "text": "",
+      "markups": [],
+      "layout": 1,
+      "iframe": {
+        "mediaResourceId": "8b417fcb4bcda2fe5bd7626823c4d8ef",
+        "thumbnailUrl": "https://i.embed.ly/1/image?url=https%3A%2F%2Fgithub.githubassets.com%2Fimages%2Fmodules%2Fgists%2Fgist-og-image.png&key=a19fcc184b9711e1b4764040d3dc5c07"
+      }
+    }
+    youtube
+     {
+      "name": "4df2",
+      "type": 11,
+      "text": "",
+      "markups": [],
+      "layout": 3,
+      "iframe": {
+        "mediaResourceId": "b2a422d7d6bd59ae0c470f17e46e9b6c",
+        "iframeWidth": 854,
+        "iframeHeight": 480,
+        "thumbnailUrl": "https://i.embed.ly/1/image?url=https%3A%2F%2Fi.ytimg.com%2Fvi%2FZxcA4rVQBbE%2Fhqdefault.jpg&key=a19fcc184b9711e1b4764040d3dc5c07"
+      }
+    }
+       */
+      console.log('https://medium.com/media/'+p.iframe.mediaResourceId);
       p.text = '\n <iframe src="https://medium.com/media/' + p.iframe.mediaResourceId + '" frameborder=0></iframe>'
+      if (p.layout == 1) {
+        let url = 'https://medium.com/media/'+p.iframe.mediaResourceId;
+        p.text = "gist:" + url;
+      }
+      if (p.layout == 3) {
+        let url = 'https://medium.com/media/'+p.iframe.mediaResourceId;
+        p.text = "youtube:" + url;
+      }
       break
     case 13:
       markup = '\n### '
