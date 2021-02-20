@@ -11,6 +11,7 @@ window.onload = function() {
   }
   createLoadForm()
   loadIcon.style.visibility = 'visible'
+  console.log("nilmadhab loading");
   exportMedium()
 }
 
@@ -60,29 +61,39 @@ function exportMedium() {
           console.error('The fetch fails, and the response code is ' + res.status)
         }
       })
-      .then(function (res) {
+      .then( (res) => {
+        console.log("nilmadhab res", res);
         let markdownText = ''
-        let title = ''
-        if (isHtml) {
-          const parser = new DOMParser()
-          const doc = parser.parseFromString(res, 'text/html')
-          var blog = doc.querySelector('.article-post-wrapper') || doc.querySelector('#content')
-          titleDoc = doc.querySelector('.full-bleed-data h2') || doc.querySelector('.container .text-center h1')
-          const title = titleDoc.innerText
-          const turndownService = new TurndownService()
-          if (title != null) {
-            markdownText = '# ' + title + '\n' + turndownService.turndown(blog)
-          } else {
-            markdownText = turndownService.turndown(blog)
+        let title = '';
+        // medium Process
+        const story = parseJsonToMarkdown(res)
+        console.log("markdown story", story);
+        return story;
+      }).then((story)=>{
+        // process gist
+      let promArr = [];
+        for (let i = 0 ; i < story.markdown.length; i++) {
+          let mark = story.markdown[i];
+          if (mark.search("gist:") == 0){
+            let gist_url = mark.split("gist:")[1];
+            promArr.push(getGist(gist_url, i));
+            console.log("gist url", gist_url);
           }
-        } else {
-          const story = parseJsonToMarkdown(res)
+        }
+        Promise.all(promArr).then((results)=>{
+          console.log("results promarr", results);
+          for (let i = 0; i< results.length; i++) {
+            let index = results[i][0];
+            let gist = results[i][1];
+            story.markdown[index] = gist;
+          }
           markdownText = story.markdown.join('')
           title = story.title
-        }      
-        saveHistory(title, activeTab.url)
-        cancelLoad()
-        document.querySelector('#source').value = markdownText;
+          saveHistory(title, activeTab.url)
+          cancelLoad()
+          document.querySelector('#source').value = markdownText;
+        })
+
       })
       .catch(function (err) {
         console.error(err)
@@ -174,6 +185,33 @@ function processSection(s) {
   return section
 }
 
+function getGist(url, index) {
+  return new Promise((resolve, reject) => {
+    fetch(url)
+      .then(function (res) {
+        //console.log("gist",res.text());
+        if (res.ok) {
+          return res.text()
+        } else {
+          console.error('The fetch fails, and the response code is ' + res.status)
+        }
+      }).then((text)=>{
+      //console.log("text", text);
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(text, 'text/html')
+      let gist = doc.querySelector('script');
+      if (gist) {
+        let liquid_tag = `{% gist ${gist.src} %}`;
+        console.log("liquid_tag", liquid_tag);
+        return resolve([index, liquid_tag]);
+      }
+    }).catch((err)=>{
+      return resolve([index, liquid_tag]);
+    });
+  });
+
+}
+
 function processParagraph(p, sequence) {
   const markups_array = createMarkupsArray(p.markups)
   if (markups_array.length > 0) {
@@ -225,7 +263,42 @@ function processParagraph(p, sequence) {
       markup = '\n ' + sequence + '. '
       break
     case 11:
+      // code and youtube videos
+      /*
+      code
+      {
+      "name": "1314",
+      "type": 11,
+      "text": "",
+      "markups": [],
+      "layout": 1,
+      "iframe": {
+        "mediaResourceId": "8b417fcb4bcda2fe5bd7626823c4d8ef",
+        "thumbnailUrl": "https://i.embed.ly/1/image?url=https%3A%2F%2Fgithub.githubassets.com%2Fimages%2Fmodules%2Fgists%2Fgist-og-image.png&key=a19fcc184b9711e1b4764040d3dc5c07"
+      }
+    }
+    youtube
+     {
+      "name": "4df2",
+      "type": 11,
+      "text": "",
+      "markups": [],
+      "layout": 3,
+      "iframe": {
+        "mediaResourceId": "b2a422d7d6bd59ae0c470f17e46e9b6c",
+        "iframeWidth": 854,
+        "iframeHeight": 480,
+        "thumbnailUrl": "https://i.embed.ly/1/image?url=https%3A%2F%2Fi.ytimg.com%2Fvi%2FZxcA4rVQBbE%2Fhqdefault.jpg&key=a19fcc184b9711e1b4764040d3dc5c07"
+      }
+    }
+     <!DOCTYPE html><html><head><title>LC1423.py – Medium</title><meta name="description" content="Instantly share code, notes, and snippets. You can&#39;t perform that action at this time. You signed in with another tab or window. You signed out in another tab or window. Reload to refresh your session. Reload to refresh your session."><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta name="twitter:widgets:csp" content="on"><meta name="robots" content="noindex"><base target="_blank"><style>body {text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-family: "ff-tisa-web-pro", Georgia, Cambria, "Times New Roman", Times, serif; font-weight: 400; color: #333332; font-size: 18px; line-height: 1.4; margin: 0; background-color: white; overflow: hidden;}iframe {max-width: 100%;}</style></head><body><style>.gist .gist-file { margin-bottom: 0 !important; }.gist { text-rendering: auto; }</style><script src="https://gist.github.com/sksaikia/10ea71990b58e8733d740824ed3a8774.js" charset="utf-8"></script><script>var height = -1; var delayMs = 200; if (document) {document.domain = document.domain;}function notifyResize(height) {height = height ? height : document.documentElement.offsetHeight; var resized = false; if (window.donkey && donkey.resize) {donkey.resize(height);var elements = document.getElementsByClassName("gist-data"); for (var i = 0; i < elements.length; i++) {elements[i].style.overflow = "visible"}resized = true;}if (parent && parent._resizeIframe) {var obj = {iframe: window.frameElement, height: height}; parent._resizeIframe(obj); resized = true;}if (window.location && window.location.hash === "#amp=1" && window.parent && window.parent.postMessage) {window.parent.postMessage({sentinel: "amp", type: "embed-size", height: height}, "*");}if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.resize) {window.webkit.messageHandlers.resize.postMessage(height); resized = true;}return resized;}function maybeResize() {try {if (document.documentElement.offsetHeight != height && notifyResize()) {height = document.documentElement.offsetHeight;}delayMs = Math.min(delayMs * 2, 1000000); setTimeout(maybeResize, delayMs);} catch(error) {console.log('maybeResize error: ', error)}}maybeResize();</script></body></html>
+       */
+      console.log('https://medium.com/media/'+p.iframe.mediaResourceId);
       p.text = '\n <iframe src="https://medium.com/media/' + p.iframe.mediaResourceId + '" frameborder=0></iframe>'
+      if (p.layout == 1) {
+        let url = 'https://medium.com/media/'+p.iframe.mediaResourceId;
+        p.text = "gist:" + url;
+      }
       break
     case 13:
       markup = '\n### '
