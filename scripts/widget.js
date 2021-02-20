@@ -64,16 +64,20 @@ function exportMedium() {
         let markdownText = ''
         let title = '';
         // medium Process
-        const story = parseJsonToMarkdown(res)
-        return story;
+        return parseJsonToMarkdown(res);
       }).then((story)=>{
         // process gist
       let promArr = [];
         for (let i = 0 ; i < story.markdown.length; i++) {
           let mark = story.markdown[i];
-          if (mark.search("gist:") == 0){console.log('https://medium.com/media/'+p.iframe.mediaResourceId);
+          if (mark.search("gist:") == 0){
             let gist_url = mark.split("gist:")[1];
-            promArr.push(getGist(gist_url, i));
+            promArr.push(getLiquidTagsForDevto(gist_url, i, 'gist'));
+            console.log("gist url", gist_url);
+          }
+          if (mark.search("youtube:") == 0){
+            let gist_url = mark.split("youtube:")[1];
+            promArr.push(getLiquidTagsForDevto(gist_url, i, 'youtube'));
             console.log("gist url", gist_url);
           }
         }
@@ -182,7 +186,7 @@ function processSection(s) {
   return section
 }
 
-function getGist(url, index) {
+function getLiquidTagsForDevto(url, index, type) {
   return new Promise((resolve, reject) => {
     fetch(url)
       .then(function (res) {
@@ -196,12 +200,23 @@ function getGist(url, index) {
       //console.log("text", text);
       const parser = new DOMParser()
       const doc = parser.parseFromString(text, 'text/html')
-      let gist = doc.querySelector('script');
-      if (gist) {
-        let liquid_tag = `{% gist ${gist.src} %}`;
-        console.log("liquid_tag", liquid_tag);
-        return resolve([index, liquid_tag]);
+      let liquid_tag = '';
+      if (type == 'gist') {
+        let gist = doc.querySelector('script');
+        if (gist) {
+          liquid_tag = `{% ${type} ${gist.src} %}`;
+        }
       }
+      if (type == 'youtube') {
+        let iframesrc = doc.querySelector('iframe');
+        if (iframesrc) {
+          let decodedURL = decodeURIComponent(iframesrc.src);
+          decodedURL = decodedURL.split("?feature")[0];
+          decodedURL = decodedURL.split("https://cdn.embedly.com/widgets/media.html?src=https://www.youtube.com/embed/")[1];
+          liquid_tag = `{% ${type} ${decodedURL} %}`;;
+        }
+      }
+      return resolve([index, liquid_tag]);
     }).catch((err)=>{
       return resolve([index, liquid_tag]);
     });
@@ -294,6 +309,10 @@ function processParagraph(p, sequence) {
       if (p.layout == 1) {
         let url = 'https://medium.com/media/'+p.iframe.mediaResourceId;
         p.text = "gist:" + url;
+      }
+      if (p.layout == 3) {
+        let url = 'https://medium.com/media/'+p.iframe.mediaResourceId;
+        p.text = "youtube:" + url;
       }
       break
     case 13:
